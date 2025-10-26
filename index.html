@@ -19,28 +19,32 @@
       --radius-lg: 14px;
       --radius-md: 10px;
       --line: linear-gradient(180deg, #7aa2ff, #86f7d3);
-      --gutter: 80px; /* 竖线与卡片的基准间距 */
+      --gutter: clamp(56px, 8vw, 80px); /* 竖线与卡片的基准间距 */
+      --font-base: clamp(14px, 1.1vw + 10px, 16px);
     }
     *{box-sizing:border-box}
     html,body{height:100%}
+    html{font-size:var(--font-base);}
     body{
       margin:0; font-family: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";
       background: radial-gradient(1200px 700px at 20% -10%, rgba(134,247,211,0.18), transparent 60%),
                   radial-gradient(900px 700px at 120% 10%, rgba(122,162,255,0.15), transparent 50%),
                   var(--bg);
       color: var(--text);
+      font-size:1rem;
     }
     body.modal-open{overflow:hidden}
-    .app{display:grid; grid-template-columns: 1fr; gap:20px; padding:24px; max-width:1400px; margin:0 auto}
+    .app{display:grid; grid-template-columns: 1fr; gap:20px; padding:clamp(16px, 4vw, 24px); max-width:1400px; margin:0 auto}
     header{
       grid-column: 1 / -1;
       position: sticky; top:0; z-index:10; backdrop-filter: blur(10px);
       background: linear-gradient(180deg, rgba(11,16,32,0.8), rgba(11,16,32,0.5));
       border-bottom: 1px solid var(--panel-strong);
-      margin:-24px -24px 16px; padding:16px 24px 18px;
+      margin:calc(-1 * clamp(16px, 4vw, 24px)) calc(-1 * clamp(16px, 4vw, 24px)) 16px;
+      padding:16px clamp(16px, 4vw, 24px) 18px;
     }
-    .titlebar{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:14px}
-    h1{margin:0; font-size:22px; letter-spacing:0.5px}
+    .titlebar{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px}
+    h1{margin:0; font-size:clamp(20px, 4vw, 28px); letter-spacing:0.5px}
     .actions{display:flex; gap:10px; flex-wrap:wrap}
     .btn{
       position:relative; appearance:none; border:1px solid transparent; color:var(--text);
@@ -96,6 +100,9 @@
 
     .form{display:grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap:12px; align-items:end}
     .field{display:flex; flex-direction:column; gap:8px}
+    .field-span-2{grid-column: span 2;}
+    .field-span-8{grid-column: span 8;}
+    .form-actions{grid-column: span 8; display:flex; justify-content:flex-end; gap:10px}
     .field label{font-size:12px; color:var(--muted)}
     input[type="text"], input[type="date"], input[type="time"], select, textarea{
       width:100%; padding:12px 12px; border-radius: 12px; background: rgba(255,255,255,0.06);
@@ -187,11 +194,52 @@
     .help{font-size:12px; color:var(--muted)}
 
     @media (max-width: 1024px){
-      :root{ --gutter: 72px; }
       .app{grid-template-columns: 1fr}
+      header{top:0; margin:calc(-1 * clamp(16px, 4vw, 24px)) calc(-1 * clamp(16px, 4vw, 24px)) 16px; padding:16px clamp(16px, 4vw, 24px) 18px;}
       .timeline-wrap{grid-template-columns: 1fr}
-      .timeline{height:auto}
+      .timeline{height:auto; max-height:none}
       .rightbar{position:static; height:auto}
+    }
+
+    @media (max-width: 768px){
+      body{font-size:0.95rem;}
+      .titlebar{flex-direction:column; align-items:flex-start; gap:12px;}
+      .actions{width:100%; justify-content:flex-start;}
+      .btn{padding:9px 14px; font-size:0.95rem;}
+      .timeline{padding:14px 14px 14px 20px;}
+      .rb-card{padding:12px;}
+      .rb-search{width:100%;}
+    }
+
+    @media (max-width: 600px){
+      .app{gap:16px;}
+      header{position:static; margin:-16px -16px 12px; padding:14px 16px 18px; border-radius:0;}
+      .actions{gap:8px;}
+      .actions .btn{flex:1 1 calc(50% - 8px); min-width:140px; text-align:center;}
+      .timeline{padding:14px 10px 14px 18px;}
+      .timeline-inner{margin-left: calc(var(--gutter) - 20px);}
+      .event{padding:12px;}
+      .event-head{flex-direction:column; align-items:flex-start; gap:8px;}
+      .event-head .btn{padding:6px 12px;}
+      .type-chip{font-size:10px;}
+      .rightbar{order:-1;}
+      .rb-card{padding:12px 12px 16px;}
+      .type-quick{gap:6px;}
+      .form{grid-template-columns: 1fr;}
+      .field-span-2,
+      .field-span-8,
+      .form-actions{grid-column: span 1;}
+      .form-actions{flex-direction:column; align-items:stretch;}
+      .form-actions .btn{width:100%;}
+      .modal{align-items:flex-start; padding:16px;}
+      .modal-panel{width:100%; max-width:none; height:100%; border-radius:0; margin:0; padding:22px 18px; overflow-y:auto;}
+      .modal-panel::before{inset:-40% 5% auto;}
+      .modal-panel--sm{width:100%;}
+      .modal-head{flex-direction:column; align-items:flex-start; gap:10px;}
+      .modal-actions{flex-direction:column; align-items:stretch;}
+      .modal-actions .btn{width:100%;}
+      .date-sticky{font-size:11px;}
+      .actions .btn.primary{flex-basis:100%;}
     }
   </style>
 </head>
@@ -204,7 +252,7 @@
           <button class="btn" id="btnToday" title="快速回到今天">回到今天</button>
           <button class="btn" id="btnExport" title="导出数据">导出</button>
           <input type="file" id="fileImport" accept=".xls,application/vnd.ms-excel,text/html" hidden>
-          <button class="btn" id="btnImport" title="导入数据（将覆盖当前缓存）">导入</button>
+          <button class="btn" id="btnImport" title="导入数据（与当前缓存合并）">导入</button>
           <button class="btn danger" id="btnClear" title="清空所有本地数据">清空数据</button>
           <button class="btn primary" id="btnAdd" title="添加事件">添加事件</button>
         </div>
@@ -242,15 +290,15 @@
         <button class="btn" id="btnCloseModal" aria-label="关闭" style="padding:6px 10px">关闭</button>
       </div>
       <form id="eventForm" class="form">
-        <div class="field" style="grid-column: span 2">
+        <div class="field field-span-2">
           <label for="date">日期</label>
           <input id="date" type="date" required>
         </div>
-        <div class="field" style="grid-column: span 2">
+        <div class="field field-span-2">
           <label for="time">时间</label>
           <input id="time" type="time" required>
         </div>
-        <div class="field" style="grid-column: span 2">
+        <div class="field field-span-2">
           <label for="type">类型</label>
           <select id="type" required>
             <option>日常</option>
@@ -260,20 +308,20 @@
             <option>学习</option>
           </select>
         </div>
-        <div class="field" style="grid-column: span 8">
+        <div class="field field-span-8">
           <label for="title">事件标题</label>
           <input id="title" type="text" placeholder="做了什么？（必填）" required>
         </div>
-        <div class="field" style="grid-column: span 8">
+        <div class="field field-span-8">
           <label for="notes">备注</label>
           <textarea id="notes" placeholder="可选"></textarea>
         </div>
-        <div style="grid-column: span 8; display:flex; justify-content:flex-end; gap:10px">
+        <div class="form-actions">
           <button type="button" class="btn" id="btnCancel">取消</button>
           <button class="btn primary" id="btnSubmit" type="submit">添加事件</button>
         </div>
       </form>
-      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 XLS 时会覆盖当前缓存；导出的 XLS 可直接用 Excel 打开与编辑。</div>
+      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 XLS 会与当前缓存合并；导出的 XLS 可直接用 Excel 打开与编辑。</div>
     </div>
   </div>
 
@@ -345,6 +393,37 @@
     }
 
     function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
+
+    function eventKey(ev){
+      const dt = new Date(ev.datetime);
+      return [dt.getTime(), (ev.type||'').trim(), (ev.title||'').trim()].join('|');
+    }
+
+    function mergeEvents(existing=[], incoming=[]){
+      const map = new Map();
+      const stats = {added: 0, updated: 0};
+      existing.forEach(ev=>{
+        const key = eventKey(ev);
+        map.set(key, {...ev});
+      });
+      incoming.forEach(ev=>{
+        const key = eventKey(ev);
+        const prev = map.get(key);
+        const nextItem = {...ev};
+        if(prev){
+          nextItem.id = prev.id;
+          const prevTime = new Date(prev.datetime).getTime();
+          const nextTime = new Date(nextItem.datetime).getTime();
+          const changed = prevTime !== nextTime || prev.type !== nextItem.type || (prev.title||'').trim() !== (nextItem.title||'').trim() || (prev.notes||'').trim() !== (nextItem.notes||'').trim();
+          if(changed) stats.updated += 1;
+        }else{
+          if(!nextItem.id) nextItem.id = uid();
+          stats.added += 1;
+        }
+        map.set(key, nextItem);
+      });
+      return {list: Array.from(map.values()), stats};
+    }
 
     /*** 视图渲染（增量） ***/
     let allEvents = loadEvents().sort((a,b)=> b.datetime - a.datetime);
@@ -701,17 +780,22 @@
             e.target.value = '';
             return;
           }
-          const ok = await showConfirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`, {
+          const ok = await showConfirm(`将导入 ${imported.length} 条记录，与当前 ${allEvents.length} 条记录合并。继续？`, {
             title: '导入数据',
             confirmText: '导入',
             cancelText: '取消',
             confirmVariant: 'primary'
           });
           if(!ok) return;
-          allEvents = imported.sort((a,b)=> b.datetime - a.datetime);
+          const {list: merged, stats} = mergeEvents(allEvents, imported);
+          allEvents = merged.sort((a,b)=> b.datetime - a.datetime);
           saveEvents(allEvents);
           rebuildAll();
-          alert('导入完成');
+          const summaryParts = [];
+          if(stats.added) summaryParts.push(`新增 ${stats.added} 条`);
+          if(stats.updated) summaryParts.push(`更新 ${stats.updated} 条`);
+          const summary = summaryParts.length ? summaryParts.join('，') : '数据保持不变';
+          alert(`导入完成：${summary}。`);
           e.target.value = '';
         }catch(err){
           alert('导入失败：'+err.message);
