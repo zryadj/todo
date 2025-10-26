@@ -80,7 +80,7 @@
     }
     /* 下拉框保持与输入框一致的深色风格 */
     select{background: #050915; color:#f4f6ff; font-weight:500}
-    select option{background:#050915; color:#f4f6ff}
+    select option{background:#f4f6ff; color:#050915}
     select option:checked{background:#6b8cff; color:#041232}
     textarea{min-height:44px; resize: vertical}
     input:focus, select:focus, textarea:focus{border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,162,255,0.25)}
@@ -108,7 +108,12 @@
 
     .event-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
     .event-meta{font-size:12px; color:var(--muted)}
-    .type-chip{font-size:11px; padding:4px 8px; border-radius:999px; background: rgba(255,255,255,0.08); border:1px solid var(--panel-strong)}
+    .type-chip{font-size:11px; padding:4px 8px; border-radius:999px; background: rgba(255,255,255,0.08); border:1px solid var(--panel-strong); transition:.2s background}
+    .type-chip[data-type="日常"]{background: rgba(122,162,255,0.18); border-color: rgba(122,162,255,0.45); color:#dce6ff}
+    .type-chip[data-type="额外"]{background: rgba(134,247,211,0.18); border-color: rgba(134,247,211,0.45); color:#dcfff4}
+    .type-chip[data-type="游戏"]{background: rgba(255,179,122,0.18); border-color: rgba(255,179,122,0.45); color:#ffe7d5}
+    .type-chip[data-type="运动"]{background: rgba(134,244,155,0.18); border-color: rgba(134,244,155,0.45); color:#e4ffe9}
+    .type-chip[data-type="学习"]{background: rgba(255,122,163,0.18); border-color: rgba(255,122,163,0.45); color:#ffd8e6}
     .event-title{margin:6px 0 6px; font-weight:600}
     .event-notes{font-size:13px; color:#d6dbea; white-space: pre-wrap}
 
@@ -175,7 +180,7 @@
   <div class="modal" id="modalAdd" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter: blur(2px); background: rgba(0,0,0,0.45); z-index:1000;">
     <div class="card" style="width:min(920px, 92vw); padding:16px; border-radius: var(--radius-xl); box-shadow: var(--shadow);" role="dialog" aria-modal="true">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
-        <strong>添加事件</strong>
+        <strong id="modalTitle">添加事件</strong>
         <button class="btn" id="btnCloseModal" aria-label="关闭" style="padding:6px 10px">关闭</button>
       </div>
       <form id="eventForm" class="form">
@@ -190,11 +195,11 @@
         <div class="field" style="grid-column: span 2">
           <label for="type">类型</label>
           <select id="type" required>
-            <option>日常</option>
-            <option>额外</option>
-            <option>游戏</option>
-            <option>运动</option>
-            <option>学习</option>
+            <option value="日常">日常</option>
+            <option value="额外">额外</option>
+            <option value="游戏">游戏</option>
+            <option value="运动">运动</option>
+            <option value="学习">学习</option>
           </select>
         </div>
         <div class="field" style="grid-column: span 8">
@@ -207,10 +212,10 @@
         </div>
         <div style="grid-column: span 8; display:flex; justify-content:flex-end; gap:10px">
           <button type="button" class="btn" id="btnCancel">取消</button>
-          <button class="btn primary" type="submit">添加事件</button>
+          <button class="btn primary" type="submit" id="btnSubmitForm">添加事件</button>
         </div>
       </form>
-      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 CSV 时会覆盖当前缓存；CSV 可由 Excel 另存为“逗号分隔值 (*.csv)”获得。</div>
+      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导出的 CSV 列为「日期,时间,类型,标题,备注」，导入时请保持相同格式；CSV 可由 Excel 另存为“逗号分隔值 (*.csv)”获得。</div>
     </div>
   </div>
 
@@ -230,11 +235,27 @@
     }
 
     /*** 工具 ***/
-    const fmt = new Intl.DateTimeFormat('zh-CN', {
-      dateStyle: 'medium', timeStyle: 'short'
-    });
-    const fmtDate = (d)=> d.toISOString().slice(0,10); // YYYY-MM-DD
-    const fmtTime = (d)=> d.toTimeString().slice(0,5);
+    const WEEK_LABELS = ['周日','周一','周二','周三','周四','周五','周六'];
+    const pad = (n)=> String(n).padStart(2,'0');
+    const fmtDate = (d)=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; // 本地日期
+    const fmtTime = (d)=> `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const fmtDateLabel = (dateStr)=>{
+      const parts = dateStr.split('-').map(Number);
+      if(parts.length<3 || parts.some(n=>Number.isNaN(n))) return dateStr;
+      const [y,m,day] = parts;
+      const base = new Date(y, m-1, day);
+      return `${dateStr} · ${WEEK_LABELS[base.getDay()]}`;
+    };
+    function parseLocalDateTime(dateStr, timeStr='00:00'){
+      if(!dateStr) return new Date(NaN);
+      const cleanDate = dateStr.trim().replace(/[./]/g,'-');
+      const [y,m,d] = cleanDate.split('-').map(Number);
+      if(!y || !m || !d) return new Date(NaN);
+      const timeParts = (timeStr||'00:00').trim().split(':').map((n)=>Number(n));
+      const h = Number.isFinite(timeParts[0]) ? timeParts[0] : 0;
+      const min = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
+      return new Date(y, m-1, d, h, min);
+    }
 
     function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 
@@ -266,7 +287,7 @@
       group.id = 'grp-'+dateStr;
       const sticky = document.createElement('div');
       sticky.className = 'date-sticky';
-      sticky.textContent = dateStr;
+      sticky.textContent = fmtDateLabel(dateStr);
       group.appendChild(sticky);
       timelineContent.appendChild(group);
       dateAnchors[dateStr] = group.id;
@@ -287,7 +308,7 @@
           card.dataset.type = e.type;
           card.innerHTML = `
             <div class="event-head">
-              <div class="event-meta">${fmtTime(new Date(e.datetime))} · <span class="type-chip">${e.type}</span></div>
+              <div class="event-meta">${fmtTime(new Date(e.datetime))} · <span class="type-chip" data-type="${e.type}">${e.type}</span></div>
               <div style="display:flex; gap:6px">
                 <button class="btn" data-act="edit" data-id="${e.id}" style="padding:6px 10px">编辑</button>
                 <button class="btn" data-act="del" data-id="${e.id}" style="padding:6px 10px">删除</button>
@@ -319,24 +340,34 @@
 
     // 右侧日期列表
     function buildDateList(filter=''){
-      const dates = Array.from(new Set(allEvents.map(e=>fmtDate(new Date(e.datetime))))).sort((a,b)=> a<b?1:-1);
-      const f = filter.trim();
-      const lower = f.toLowerCase();
+      const lower = filter.trim().toLowerCase();
+      const totalMap = {};
+      const matchedMap = {};
+      allEvents.forEach(ev=>{
+        const dateStr = fmtDate(new Date(ev.datetime));
+        totalMap[dateStr] = (totalMap[dateStr]||0) + 1;
+        if(!(dateStr in matchedMap)) matchedMap[dateStr] = 0;
+        const haystack = (ev.title+"\n"+(ev.notes||'')).toLowerCase();
+        if(!lower || haystack.includes(lower)){
+          matchedMap[dateStr] += 1;
+        }
+      });
+      const dates = Object.keys(totalMap).sort((a,b)=> a<b?1:-1);
       dateListEl.innerHTML = '';
       if(dates.length===0){
         dateListEl.innerHTML = `<div class="empty">暂无数据。添加一些事件吧～</div>`; return;
       }
-      // 小统计：每个日期条目包含数量
-      const countMap = dates.reduce((acc,d)=>{
-        acc[d] = allEvents.filter(e=>fmtDate(new Date(e.datetime))===d && (f? (e.title+"\n"+(e.notes||'')).toLowerCase().includes(lower) : true)).length; return acc;
-      }, {});
-
-      dates.forEach(d=>{
-        if(f && countMap[d]===0) return;
+      dates.forEach(dateStr=>{
+        const label = fmtDateLabel(dateStr);
+        const matchesDate = lower && (dateStr.toLowerCase().includes(lower) || label.toLowerCase().includes(lower));
+        const matchedCount = matchedMap[dateStr] || 0;
+        const totalCount = totalMap[dateStr] || 0;
+        if(lower && !matchesDate && matchedCount===0) return;
+        const displayCount = lower ? (matchesDate ? totalCount : matchedCount) : totalCount;
         const item = document.createElement('div');
         item.className = 'date-item';
-        item.innerHTML = `<span>${d}</span><small>${countMap[d]}</small>`;
-        item.addEventListener('click', ()=> jumpToDate(d));
+        item.innerHTML = `<span>${label}</span><small>${displayCount}</small>`;
+        item.addEventListener('click', ()=> jumpToDate(dateStr));
         dateListEl.appendChild(item);
       });
     }
@@ -384,37 +415,86 @@
 
     function initNow(){
       const now = new Date();
-      const tzOffset = now.getTimezoneOffset();
-      // 正常填充本地日期与时间
       dateInput.value = fmtDate(now);
-      timeInput.value = ("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2);
+      timeInput.value = fmtTime(now);
+    }
+
+    const modalTitle = document.getElementById('modalTitle');
+    const btnSubmitForm = document.getElementById('btnSubmitForm');
+    let editingId = null;
+    let lastUsedType = TYPES[0];
+
+    function setFormForAdd(){
+      editingId = null;
+      modalTitle.textContent = '添加事件';
+      btnSubmitForm.textContent = '添加事件';
+      initNow();
+      typeInput.value = TYPES.includes(lastUsedType) ? lastUsedType : TYPES[0];
+      titleInput.value = '';
+      notesInput.value = '';
+    }
+
+    function setFormForEdit(ev){
+      editingId = ev.id;
+      modalTitle.textContent = '编辑事件';
+      btnSubmitForm.textContent = '保存修改';
+      const base = new Date(ev.datetime);
+      dateInput.value = fmtDate(base);
+      timeInput.value = fmtTime(base);
+      typeInput.value = TYPES.includes(ev.type) ? ev.type : TYPES[0];
+      titleInput.value = ev.title;
+      notesInput.value = ev.notes || '';
+    }
+
+    function openModal(targetEvent=null){
+      modalAdd.style.display = 'flex';
+      if(targetEvent){
+        setFormForEdit(targetEvent);
+      } else {
+        setFormForAdd();
+      }
+      setTimeout(()=>{ try{ titleInput.focus(); }catch{} }, 0);
+    }
+
+    function closeModal(){
+      modalAdd.style.display = 'none';
+      setFormForAdd();
     }
 
     form.addEventListener('submit', (e)=>{
       e.preventDefault();
+      const isEditing = Boolean(editingId);
       try{
         const d = dateInput.value;
         const t = timeInput.value;
-        const dt = new Date(d + 'T' + t + ':00');
+        const dt = parseLocalDateTime(d, t);
         if(isNaN(dt)) throw new Error('时间无效');
-        const ev = {
-          id: uid(),
-          datetime: dt,
-          type: typeInput.value,
-          title: titleInput.value.trim(),
-          notes: notesInput.value.trim()
-        };
-        if(!ev.title) { alert('请填写事件标题'); return; }
-        allEvents.push(ev);
+        const typeValue = typeInput.value;
+        if(!TYPES.includes(typeValue)) throw new Error('请选择有效类型');
+        const title = titleInput.value.trim();
+        if(!title) throw new Error('请填写事件标题');
+        const notes = (notesInput.value||'').trim();
+        lastUsedType = typeValue;
+        if(isEditing){
+          const idx = allEvents.findIndex(x=>x.id===editingId);
+          if(idx===-1) throw new Error('事件不存在或已被删除');
+          allEvents[idx] = {...allEvents[idx], datetime: dt, type: typeValue, title, notes};
+        }else{
+          const ev = {
+            id: uid(),
+            datetime: dt,
+            type: typeValue,
+            title,
+            notes
+          };
+          allEvents.push(ev);
+        }
         allEvents.sort((a,b)=> b.datetime - a.datetime);
         saveEvents(allEvents);
-        // 更聪明的增量：重建即可（简单稳妥）
         rebuildAll();
-        // 清空标题与备注
-        titleInput.value='';
-        notesInput.value='';
+        closeModal();
       }catch(err){
-        alert('添加失败：'+err.message)
+        alert((isEditing?'保存失败：':'添加失败：')+err.message)
       }
     });
 
@@ -434,29 +514,28 @@
       } else if(act==='edit'){
         const ev = allEvents.find(x=>x.id===id);
         if(!ev) return;
-        const newTitle = prompt('编辑标题：', ev.title);
-        if(newTitle===null) return;
-        const newNotes = prompt('编辑备注：', ev.notes||'');
-        ev.title = newTitle.trim();
-        ev.notes = (newNotes||'').trim();
-        saveEvents(allEvents);
-        rebuildAll();
+        openModal(ev);
       }
     });
 
     // 导出 CSV（Excel 兼容）
     document.getElementById('btnExport').addEventListener('click', ()=>{
       if(allEvents.length===0){ alert('暂无数据可导出'); return; }
-      const header = 'datetime,type,title,notes\n';
+      const header = '日期,时间,类型,标题,备注\n';
       const rows = allEvents
         .slice()
         .sort((a,b)=> a.datetime - b.datetime) // 导出按时间正序
-        .map(e=>[
-          new Date(e.datetime).toISOString(),
-          e.type,
-          csvEscape(e.title),
-          csvEscape(e.notes||'')
-        ].join(','))
+        .map(e=>{
+          const dt = new Date(e.datetime);
+          const cells = [
+            fmtDate(dt),
+            fmtTime(dt),
+            e.type,
+            e.title,
+            e.notes||''
+          ].map(csvEscape);
+          return cells.join(',');
+        })
         .join('\n');
       const csv = '\ufeff' + header + rows; // BOM for Excel UTF-8
       const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
@@ -478,28 +557,59 @@
       reader.onload = ()=>{
         try{
           const text = String(reader.result);
-          const lines = text.split(/\r?\n/).filter(Boolean);
+          const lines = text.split(/\r?\n/).filter(line=>line.trim().length>0);
           if(lines.length<=1) throw new Error('文件为空');
-          const header = lines[0].toLowerCase();
-          if(!(header.includes('datetime') && header.includes('type') && header.includes('title'))){
-            throw new Error('列头需包含 datetime,type,title');
+          const rawHeader = lines[0].replace(/^\ufeff/, '');
+          const headerCells = smartCsvSplit(rawHeader).map(h=>h.trim());
+          const headerLower = headerCells.map(h=>h.toLowerCase());
+          const headerMap = new Map(headerLower.map((name, idx)=>[name, idx]));
+          const hasNewTemplate = headerMap.has('日期') && headerMap.has('时间') && headerMap.has('类型') && headerMap.has('标题');
+          const hasLegacyTemplate = headerMap.has('datetime') && headerMap.has('type') && headerMap.has('title');
+          if(!hasNewTemplate && !hasLegacyTemplate){
+            throw new Error('列头需包含 日期,时间,类型,标题 或 datetime,type,title');
           }
           const imported = [];
           for(let i=1;i<lines.length;i++){
             const cols = smartCsvSplit(lines[i]);
-            const [dt, type, title, notes] = cols;
-            const d = new Date(dt);
-            if(isNaN(d)) continue;
-            if(!TYPES.includes(type)) continue;
-            const item = { id: uid(), datetime: d, type, title: (title||'').trim(), notes: (notes||'').trim() };
-            if(!item.title) continue;
-            imported.push(item);
+            let type = '';
+            let title = '';
+            let notes = '';
+            let datetime = new Date(NaN);
+            if(hasNewTemplate){
+              const idxDate = headerMap.get('日期');
+              const idxTime = headerMap.get('时间');
+              const idxType = headerMap.get('类型');
+              const idxTitle = headerMap.get('标题');
+              const idxNotes = headerMap.get('备注');
+              const dateStr = (cols[idxDate]||'').trim();
+              const timeStr = (cols[idxTime]||'').trim();
+              type = (cols[idxType]||'').trim();
+              title = (cols[idxTitle]||'').trim();
+              notes = idxNotes!==undefined ? (cols[idxNotes]||'').trim() : '';
+              datetime = parseLocalDateTime(dateStr, timeStr);
+            }else{
+              const idxDatetime = headerMap.get('datetime');
+              const idxType = headerMap.get('type');
+              const idxTitle = headerMap.get('title');
+              const idxNotes = headerMap.get('notes');
+              const dtStr = (cols[idxDatetime]||'').trim();
+              type = (cols[idxType]||'').trim();
+              title = (cols[idxTitle]||'').trim();
+              notes = idxNotes!==undefined ? (cols[idxNotes]||'').trim() : '';
+              datetime = new Date(dtStr);
+            }
+            if(!type || !TYPES.includes(type)) continue;
+            if(isNaN(datetime)) continue;
+            const cleanTitle = title.trim();
+            if(!cleanTitle) continue;
+            imported.push({ id: uid(), datetime, type, title: cleanTitle, notes: (notes||'').trim() });
           }
           if(imported.length===0) throw new Error('没有有效数据行');
           if(!confirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`)) return;
           allEvents = imported.sort((a,b)=> b.datetime - a.datetime);
           saveEvents(allEvents);
           rebuildAll();
+          setFormForAdd();
           alert('导入完成');
           e.target.value = '';
         }catch(err){
@@ -515,6 +625,7 @@
         allEvents = [];
         saveEvents(allEvents);
         rebuildAll();
+        setFormForAdd();
       }
     });
 
@@ -552,21 +663,14 @@
     const btnCloseModal = document.getElementById('btnCloseModal');
     const btnCancel = document.getElementById('btnCancel');
 
-    function openModal(){
-      modalAdd.style.display = 'flex';
-      initNow();
-      setTimeout(()=>{ try{ document.getElementById('title').focus(); }catch{} }, 0);
-    }
-    function closeModal(){ modalAdd.style.display = 'none'; }
-
-    btnAdd?.addEventListener('click', openModal);
+    btnAdd?.addEventListener('click', ()=> openModal());
     btnCloseModal?.addEventListener('click', closeModal);
     btnCancel?.addEventListener('click', closeModal);
     modalAdd.addEventListener('click', (e)=>{ if(e.target === modalAdd) closeModal(); });
     window.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeModal(); });
 
     // 初始化
-    initNow();
+    setFormForAdd();
     rebuildAll();
   </script>
 </body>
