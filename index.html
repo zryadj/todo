@@ -126,7 +126,7 @@
     .date-sticky{position:sticky; top:6px; display:inline-block; margin-left: calc(-1 * (var(--gutter) - 16px)); padding:6px 12px; border-radius:12px;
       background: rgba(122,162,255,0.12); border:1px solid rgba(122,162,255,0.35); color:#cfe0ff; font-size:12px; backdrop-filter: blur(6px)}
 
-    .event{position:relative; background: rgba(255,255,255,0.06); border:1px solid var(--panel-strong); border-radius:16px; padding:12px 14px; margin:12px 0 12px 0; transition:.15s transform,.15s background}
+    .event{position:relative; background: rgba(255,255,255,0.06); border:1px solid var(--panel-strong); border-radius:16px; padding:12px 14px; margin:12px 0 12px 0; transition:.15s transform,.15s background,.15s box-shadow}
     .event:hover{transform: translateY(-1px); background: rgba(255,255,255,0.09)}
     /* 让圆点中心严格落在时间线中心 */
     .event::before{content:""; position:absolute; left: calc(-1 * var(--gutter)/2 - 8px); top:18px; width:16px; height:16px; border-radius:50%; background: var(--panel-strong); outline:4px solid rgba(255,255,255,0.06);}    
@@ -135,10 +135,38 @@
     .event[data-type="游戏"]::before{background: #ffb37a}
     .event[data-type="运动"]::before{background: #86f49b}
     .event[data-type="学习"]::before{background: #ff7aa3}
+    .event.event--focus{background: rgba(255,255,255,0.12); box-shadow: 0 0 0 2px rgba(122,162,255,0.45);}
 
     .event-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
     .event-meta{font-size:12px; color:var(--muted)}
-    .type-chip{font-size:11px; padding:4px 8px; border-radius:999px; background: rgba(255,255,255,0.08); border:1px solid var(--panel-strong)}
+    .type-chip{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      font-size:11px;
+      padding:4px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,0.08);
+      border:1px solid var(--panel-strong);
+      color:var(--muted);
+      white-space:nowrap;
+      transition:.15s transform,.15s box-shadow,.15s background;
+    }
+    .type-chip[data-type="日常"]{background: rgba(122,162,255,0.18); border-color: rgba(122,162,255,0.5); color:#dbe5ff;}
+    .type-chip[data-type="额外"]{background: rgba(134,247,211,0.18); border-color: rgba(134,247,211,0.45); color:#dbfff3;}
+    .type-chip[data-type="游戏"]{background: rgba(255,179,122,0.18); border-color: rgba(255,179,122,0.45); color:#ffe8d9;}
+    .type-chip[data-type="运动"]{background: rgba(134,244,155,0.18); border-color: rgba(134,244,155,0.45); color:#e0ffe7;}
+    .type-chip[data-type="学习"]{background: rgba(255,122,163,0.18); border-color: rgba(255,122,163,0.5); color:#ffdbe8;}
+    .type-chip .type-chip-count{font-size:10px; opacity:0.8;}
+    .type-chip--interactive{
+      cursor:pointer;
+    }
+    .type-chip--interactive:not(:disabled){
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+    }
+    .type-chip--interactive:not(:disabled):hover{transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.18), 0 8px 16px rgba(8,12,24,0.4);}
+    .type-chip--interactive:disabled{opacity:0.4; cursor:not-allowed;}
+    .type-chip--mini{font-size:10px; padding:3px 8px;}
     .event-title{margin:6px 0 6px; font-weight:600}
     .event-notes{font-size:13px; color:#d6dbea; white-space: pre-wrap}
 
@@ -147,9 +175,13 @@
     .rb-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px}
     .rb-search{margin-bottom:10px}
     .date-list{overflow:auto; height: calc(100% - 90px); padding-right:4px}
-    .date-item{display:flex; gap:8px; align-items:center; justify-content:space-between; padding:8px 10px; margin:6px 0; border-radius:12px; cursor:pointer; transition:.15s background;border:1px solid transparent}
+    .type-quick{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 6px;}
+    .date-item{display:flex; flex-direction:column; gap:8px; align-items:flex-start; padding:8px 10px; margin:6px 0; border-radius:12px; cursor:default; transition:.15s background;border:1px solid transparent}
     .date-item:hover{background: rgba(255,255,255,0.06); border-color: var(--panel-strong)}
     .date-item small{color: var(--muted)}
+    .date-item-head{display:flex; align-items:center; justify-content:space-between; width:100%; background:none; border:none; color:inherit; font:inherit; padding:0; cursor:pointer;}
+    .date-item-head:focus{outline:1px solid rgba(122,162,255,0.45); outline-offset:2px;}
+    .date-item-tags{display:flex; flex-wrap:wrap; gap:6px;}
 
     .empty{padding:16px; color:var(--muted)}
     .help{font-size:12px; color:var(--muted)}
@@ -196,6 +228,7 @@
           <div class="rb-search">
             <input id="dateSearch" type="text" placeholder="搜索日期或关键字...">
           </div>
+          <div class="type-quick" id="typeQuick"></div>
           <div class="date-list" id="dateList"></div>
         </div>
       </aside>
@@ -322,6 +355,7 @@
     const timelineContent = document.getElementById('timelineContent');
     const timeline = document.getElementById('timeline');
     const dateListEl = document.getElementById('dateList');
+    const typeQuickEl = document.getElementById('typeQuick');
 
     function groupByDate(events){
       const map = new Map();
@@ -359,10 +393,11 @@
         for(const e of byDate.get(d)){
           const card = document.createElement('div');
           card.className = 'event';
+          card.id = 'event-'+e.id;
           card.dataset.type = e.type;
           card.innerHTML = `
             <div class="event-head">
-              <div class="event-meta">${fmtTime(new Date(e.datetime))} · <span class="type-chip">${e.type}</span></div>
+              <div class="event-meta">${fmtTime(new Date(e.datetime))} · <span class="type-chip" data-type="${e.type}">${e.type}</span></div>
               <div style="display:flex; gap:6px">
                 <button class="btn" data-act="edit" data-id="${e.id}" style="padding:6px 10px">编辑</button>
                 <button class="btn" data-act="del" data-id="${e.id}" style="padding:6px 10px">删除</button>
@@ -384,6 +419,7 @@
       renderedCount = 0;
       renderMore();
       buildDateList();
+      buildTypeQuicklinks();
     }
 
     // 无限下滑加载
@@ -394,26 +430,114 @@
 
     // 右侧日期列表
     function buildDateList(filter=''){
-      const dates = Array.from(new Set(allEvents.map(e=>fmtDate(new Date(e.datetime))))).sort((a,b)=> a<b?1:-1);
-      const f = filter.trim();
-      const lower = f.toLowerCase();
+      const grouped = allEvents.reduce((acc,e)=>{
+        const d = fmtDate(new Date(e.datetime));
+        if(!acc[d]) acc[d] = [];
+        acc[d].push(e);
+        return acc;
+      }, {});
+      const dates = Object.keys(grouped).sort((a,b)=> a<b?1:-1);
+      const filterText = filter.trim().toLowerCase();
       dateListEl.innerHTML = '';
       if(dates.length===0){
         dateListEl.innerHTML = `<div class="empty">暂无数据。添加一些事件吧～</div>`; return;
       }
-      // 小统计：每个日期条目包含数量
-      const countMap = dates.reduce((acc,d)=>{
-        acc[d] = allEvents.filter(e=>fmtDate(new Date(e.datetime))===d && (f? (e.title+"\n"+(e.notes||'')).toLowerCase().includes(lower) : true)).length; return acc;
-      }, {});
-
+      let appended = 0;
       dates.forEach(d=>{
-        if(f && countMap[d]===0) return;
+        const eventsForDate = grouped[d] || [];
+        const matchedEvents = filterText
+          ? eventsForDate.filter(ev => (ev.title+"\n"+(ev.notes||'')).toLowerCase().includes(filterText))
+          : eventsForDate;
+        if(matchedEvents.length===0) return;
+        appended++;
         const item = document.createElement('div');
         item.className = 'date-item';
-        item.innerHTML = `<span>${d}</span><small>${countMap[d]}</small>`;
-        item.addEventListener('click', ()=> jumpToDate(d));
+        const headBtn = document.createElement('button');
+        headBtn.type = 'button';
+        headBtn.className = 'date-item-head';
+        headBtn.innerHTML = `<span>${d}</span><small>${matchedEvents.length}</small>`;
+        headBtn.addEventListener('click', ()=> jumpToDate(d));
+        const tagsWrap = document.createElement('div');
+        tagsWrap.className = 'date-item-tags';
+        const typesForDate = TYPES.filter(type=> matchedEvents.some(ev=>ev.type===type));
+        typesForDate.forEach(type=>{
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'type-chip type-chip--mini type-chip--interactive';
+          btn.dataset.type = type;
+          btn.textContent = type;
+          btn.title = `${d} · ${type}`;
+          btn.addEventListener('click', (evt)=>{ evt.stopPropagation(); jumpToDateType(d, type); });
+          tagsWrap.appendChild(btn);
+        });
+        item.appendChild(headBtn);
+        if(typesForDate.length){
+          item.appendChild(tagsWrap);
+        }
         dateListEl.appendChild(item);
       });
+      if(appended===0){
+        dateListEl.innerHTML = `<div class="empty">未找到匹配的日期</div>`;
+      }
+    }
+
+    function buildTypeQuicklinks(){
+      if(!typeQuickEl) return;
+      const typeCounts = allEvents.reduce((acc, ev)=>{
+        acc[ev.type] = (acc[ev.type] || 0) + 1;
+        return acc;
+      }, {});
+      typeQuickEl.innerHTML = '';
+      TYPES.forEach(type=>{
+        const count = typeCounts[type] || 0;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'type-chip type-chip--interactive';
+        btn.dataset.type = type;
+        btn.innerHTML = count ? `${type}<span class="type-chip-count">${count}</span>` : type;
+        btn.disabled = count === 0;
+        btn.title = count === 0 ? `暂无 ${type} 事件` : `查看最新的 ${type} 事件`;
+        btn.addEventListener('click', ()=> jumpToType(type));
+        typeQuickEl.appendChild(btn);
+      });
+    }
+
+    function ensureEventElement(eventId){
+      let el = document.getElementById('event-'+eventId);
+      while(!el && renderedCount < allEvents.length){
+        renderMore();
+        el = document.getElementById('event-'+eventId);
+      }
+      return el;
+    }
+
+    function focusEvent(el){
+      if(!el) return;
+      document.querySelectorAll('.event--focus').forEach(node=>{
+        if(node!==el) node.classList.remove('event--focus');
+      });
+      el.classList.add('event--focus');
+      setTimeout(()=>{ el.classList.remove('event--focus'); }, 1600);
+    }
+
+    function jumpToType(type){
+      const target = allEvents.find(ev=>ev.type===type);
+      if(!target) return;
+      const el = ensureEventElement(target.id);
+      if(el){
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        focusEvent(el);
+      }
+    }
+
+    function jumpToDateType(dateStr, type){
+      const target = allEvents.find(ev=>fmtDate(new Date(ev.datetime))===dateStr && ev.type===type);
+      if(!target) return;
+      const el = ensureEventElement(target.id);
+      if(el){
+        el.scrollIntoView({behavior:'smooth', block:'center'});
+        focusEvent(el);
+      }
     }
 
     function jumpToDate(dateStr){
@@ -572,7 +696,11 @@
         try{
           const text = String(reader.result);
           const imported = parseImportedData(text);
-          if(imported.length===0) throw new Error('没有有效数据行');
+          if(imported.length===0){
+            alert(allEvents.length ? '未检测到有效数据，已保留当前缓存。' : '未检测到有效数据。');
+            e.target.value = '';
+            return;
+          }
           const ok = await showConfirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`, {
             title: '导入数据',
             confirmText: '导入',
