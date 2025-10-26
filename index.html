@@ -79,8 +79,15 @@
       border:1px solid var(--panel-strong); color:var(--text); outline:none; transition: .15s border-color, .15s box-shadow;
     }
     /* 下拉框保持与输入框一致的深色风格 */
-    select{background: #050915; color:#f4f6ff; font-weight:500}
-    select option{background:#050915; color:#f4f6ff}
+    select{
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      font-weight:500;
+    }
+    select option{
+      background: rgba(11,16,32,0.95);
+      color: var(--text);
+    }
     select option:checked{background:#6b8cff; color:#041232}
     textarea{min-height:44px; resize: vertical}
     input:focus, select:focus, textarea:focus{border-color: var(--primary); box-shadow: 0 0 0 3px rgba(122,162,255,0.25)}
@@ -235,6 +242,34 @@
     });
     const fmtDate = (d)=> d.toISOString().slice(0,10); // YYYY-MM-DD
     const fmtTime = (d)=> d.toTimeString().slice(0,5);
+    const stripBom = (text='')=> String(text).replace(/^\ufeff/,'');
+
+    function parseDateTimeParts(dateStr='', timeStr=''){
+      const dateClean = stripBom(dateStr).trim();
+      if(!dateClean) return null;
+      const segments = dateClean.replace(/[./]/g,'-').split('-').filter(Boolean);
+      if(segments.length < 3) return null;
+      const [y, m, d] = segments;
+      const isoDate = `${y.padStart(4,'0')}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      let timeClean = stripBom(timeStr).trim();
+      if(!timeClean){
+        timeClean = '00:00:00';
+      }else{
+        timeClean = timeClean.replace(/[.]/g,':');
+        const match = timeClean.match(/^(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?$/);
+        if(match){
+          const h = match[1].padStart(2,'0');
+          const min = (match[2]??'0').padStart(2,'0');
+          const sec = (match[3]??'0').padStart(2,'0');
+          timeClean = `${h}:${min}:${sec}`;
+        }else{
+          return null;
+        }
+      }
+      const dt = new Date(`${isoDate}T${timeClean}`);
+      if(isNaN(dt)) return null;
+      return dt;
+    }
 
     function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 
@@ -447,16 +482,20 @@
     // 导出 CSV（Excel 兼容）
     document.getElementById('btnExport').addEventListener('click', ()=>{
       if(allEvents.length===0){ alert('暂无数据可导出'); return; }
-      const header = 'datetime,type,title,notes\n';
+      const header = '日期,时间,类型,标题,备注\n';
       const rows = allEvents
         .slice()
         .sort((a,b)=> a.datetime - b.datetime) // 导出按时间正序
-        .map(e=>[
-          new Date(e.datetime).toISOString(),
-          e.type,
-          csvEscape(e.title),
-          csvEscape(e.notes||'')
-        ].join(','))
+        .map(e=>{
+          const dt = new Date(e.datetime);
+          return [
+            fmtDate(dt),
+            fmtTime(dt),
+            e.type,
+            csvEscape(e.title),
+            csvEscape(e.notes||'')
+          ].join(',');
+        })
         .join('\n');
       const csv = '\ufeff' + header + rows; // BOM for Excel UTF-8
       const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
@@ -480,18 +519,47 @@
           const text = String(reader.result);
           const lines = text.split(/\r?\n/).filter(Boolean);
           if(lines.length<=1) throw new Error('文件为空');
-          const header = lines[0].toLowerCase();
-          if(!(header.includes('datetime') && header.includes('type') && header.includes('title'))){
-            throw new Error('列头需包含 datetime,type,title');
+          const headerCells = smartCsvSplit(lines[0]).map(c=>stripBom(c).trim());
+          const lowerHeader = headerCells.map(c=>c.toLowerCase());
+          const isZh = headerCells.length >= 5 && headerCells[0] === '日期' && headerCells[1] === '时间' && headerCells[2] === '类型';
+          const isEn = lowerHeader.length >= 4 && lowerHeader[0] === 'datetime' && lowerHeader[1] === 'type';
+          if(!isZh && !isEn){
+            throw new Error('列头需包含 日期,时间,类型,标题,备注');
           }
           const imported = [];
           for(let i=1;i<lines.length;i++){
             const cols = smartCsvSplit(lines[i]);
-            const [dt, type, title, notes] = cols;
-            const d = new Date(dt);
-            if(isNaN(d)) continue;
-            if(!TYPES.includes(type)) continue;
-            const item = { id: uid(), datetime: d, type, title: (title||'').trim(), notes: (notes||'').trim() };
+            let item = null;
+            if(isZh){
+              const datePart = cols[0] ?? '';
+              const timePart = cols[1] ?? '';
+              const typePart = stripBom(cols[2] ?? '').trim();
+              const titlePart = cols[3] ?? '';
+              const notesPart = cols[4] ?? '';
+              const d = parseDateTimeParts(datePart, timePart);
+              if(!d) continue;
+              if(!TYPES.includes(typePart)) continue;
+              item = {
+                id: uid(),
+                datetime: d,
+                type: typePart,
+                title: stripBom(titlePart).trim(),
+                notes: stripBom(notesPart).trim()
+              };
+            }else{
+              const [dt, type, title, notes] = cols;
+              const d = new Date(stripBom(dt));
+              if(isNaN(d)) continue;
+              const typePart = stripBom(type).trim();
+              if(!TYPES.includes(typePart)) continue;
+              item = {
+                id: uid(),
+                datetime: d,
+                type: typePart,
+                title: stripBom(title||'').trim(),
+                notes: stripBom(notes||'').trim()
+              };
+            }
             if(!item.title) continue;
             imported.push(item);
           }
