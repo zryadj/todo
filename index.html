@@ -30,6 +30,7 @@
                   var(--bg);
       color: var(--text);
     }
+    body.modal-open{overflow:hidden}
     .app{display:grid; grid-template-columns: 1fr; gap:20px; padding:24px; max-width:1400px; margin:0 auto}
     header{
       grid-column: 1 / -1;
@@ -70,6 +71,28 @@
     .btn.primary:hover{transform: translateY(-3px); box-shadow:0 22px 40px rgba(30,48,102,0.6)}
 
     .card{background: var(--panel); border:1px solid var(--panel-strong); border-radius: var(--radius-xl); box-shadow: var(--shadow)}
+
+    .modal{position:fixed; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter: blur(4px); background: rgba(4,8,20,0.58); z-index:1000; padding:24px}
+    .modal.active{display:flex}
+    .modal-panel{width:min(920px, 94vw); padding:18px 20px; border-radius: var(--radius-xl); position:relative; overflow:hidden}
+    .modal-panel::before{content:""; position:absolute; inset:-40% 10% auto; height:60%; background: radial-gradient(60% 80% at 50% 0%, rgba(134,247,211,0.18), transparent); opacity:0.8; pointer-events:none}
+    .modal-panel--sm{width:min(420px, 92vw); padding:22px 24px}
+    .modal-head{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:14px}
+    .modal-title{font-size:18px; font-weight:600; letter-spacing:0.3px}
+    .modal-body{font-size:14px; color:var(--muted); line-height:1.6}
+    .modal-body strong{color:var(--text)}
+    .modal-actions{display:flex; justify-content:flex-end; gap:12px; margin-top:22px}
+    .modal-icon{width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background: rgba(122,162,255,0.16); border:1px solid rgba(122,162,255,0.35); color:#c9d9ff; box-shadow: inset 0 0 0 1px rgba(122,162,255,0.1)}
+
+    .timeline, .date-list{scrollbar-width: thin; scrollbar-color: rgba(122,162,255,0.55) rgba(255,255,255,0.04); scrollbar-gutter: stable both-edges}
+    .timeline::-webkit-scrollbar, .date-list::-webkit-scrollbar{width:12px}
+    .timeline::-webkit-scrollbar-track, .date-list::-webkit-scrollbar-track{background: rgba(255,255,255,0.04); border-radius:999px}
+    .timeline::-webkit-scrollbar-thumb, .date-list::-webkit-scrollbar-thumb{
+      background: linear-gradient(180deg, rgba(122,162,255,0.75), rgba(134,247,211,0.75));
+      border-radius:999px; border:2px solid rgba(11,16,32,0.9);
+      box-shadow: 0 4px 10px rgba(8,12,24,0.35);
+    }
+    .timeline::-webkit-scrollbar-thumb:hover, .date-list::-webkit-scrollbar-thumb:hover{background: linear-gradient(180deg, rgba(122,162,255,0.9), rgba(134,247,211,0.9))}
 
     .form{display:grid; grid-template-columns: repeat(8, minmax(0,1fr)); gap:12px; align-items:end}
     .field{display:flex; flex-direction:column; gap:8px}
@@ -179,10 +202,10 @@
   </div>
 
   <!-- 弹窗：复用原表单结构与样式，仅改变呈现方式为模态 -->
-  <div class="modal" id="modalAdd" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter: blur(2px); background: rgba(0,0,0,0.45); z-index:1000;">
-    <div class="card" style="width:min(920px, 92vw); padding:16px; border-radius: var(--radius-xl); box-shadow: var(--shadow);" role="dialog" aria-modal="true">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
-        <strong id="modalTitle">添加事件</strong>
+  <div class="modal" id="modalAdd" aria-hidden="true">
+    <div class="card modal-panel" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <strong class="modal-title" id="modalTitle">添加事件</strong>
         <button class="btn" id="btnCloseModal" aria-label="关闭" style="padding:6px 10px">关闭</button>
       </div>
       <form id="eventForm" class="form">
@@ -218,6 +241,23 @@
         </div>
       </form>
       <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 XLS 时会覆盖当前缓存；导出的 XLS 可直接用 Excel 打开与编辑。</div>
+    </div>
+  </div>
+
+  <div class="modal" id="modalConfirm" aria-hidden="true">
+    <div class="card modal-panel modal-panel--sm" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="modal-head">
+        <div style="display:flex; align-items:center; gap:12px">
+          <span class="modal-icon" aria-hidden="true">⚠️</span>
+          <strong class="modal-title" id="confirmTitle">确认操作</strong>
+        </div>
+        <button class="btn" id="btnCloseConfirm" aria-label="关闭提示" style="padding:6px 10px">关闭</button>
+      </div>
+      <div class="modal-body" id="confirmMessage">确定执行该操作吗？</div>
+      <div class="modal-actions">
+        <button class="btn" type="button" id="btnConfirmCancel">取消</button>
+        <button class="btn" type="button" id="btnConfirmOk">确定</button>
+      </div>
     </div>
   </div>
 
@@ -467,17 +507,22 @@
 
     // 事件编辑与删除（事件委托）
     const timelineInner = document.querySelector('.timeline-inner');
-    timelineInner.addEventListener('click', (e)=>{
+    timelineInner.addEventListener('click', async (e)=>{
       const btn = e.target.closest('button[data-act]');
       if(!btn) return;
       const id = btn.getAttribute('data-id');
       const act = btn.getAttribute('data-act');
       if(act==='del'){
-        if(confirm('确定删除该事件？')){
-          allEvents = allEvents.filter(x=>x.id!==id);
-          saveEvents(allEvents);
-          rebuildAll();
-        }
+        const ok = await showConfirm('确定删除该事件？', {
+          title: '删除事件',
+          confirmText: '删除',
+          cancelText: '保留',
+          confirmVariant: 'danger'
+        });
+        if(!ok) return;
+        allEvents = allEvents.filter(x=>x.id!==id);
+        saveEvents(allEvents);
+        rebuildAll();
       } else if(act==='edit'){
         const ev = allEvents.find(x=>x.id===id);
         if(!ev) return;
@@ -523,12 +568,18 @@
       const file = e.target.files?.[0];
       if(!file) return;
       const reader = new FileReader();
-      reader.onload = ()=>{
+      reader.onload = async ()=>{
         try{
           const text = String(reader.result);
           const imported = parseImportedData(text);
           if(imported.length===0) throw new Error('没有有效数据行');
-          if(!confirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`)) return;
+          const ok = await showConfirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`, {
+            title: '导入数据',
+            confirmText: '导入',
+            cancelText: '取消',
+            confirmVariant: 'primary'
+          });
+          if(!ok) return;
           allEvents = imported.sort((a,b)=> b.datetime - a.datetime);
           saveEvents(allEvents);
           rebuildAll();
@@ -542,12 +593,17 @@
     });
 
     // 清空
-    document.getElementById('btnClear').addEventListener('click', ()=>{
-      if(confirm('确定清空所有本地数据？此操作不可恢复。')){
-        allEvents = [];
-        saveEvents(allEvents);
-        rebuildAll();
-      }
+    document.getElementById('btnClear').addEventListener('click', async ()=>{
+      const ok = await showConfirm('确定清空所有本地数据？此操作不可恢复。', {
+        title: '清空所有数据',
+        confirmText: '清空',
+        cancelText: '取消',
+        confirmVariant: 'danger'
+      });
+      if(!ok) return;
+      allEvents = [];
+      saveEvents(allEvents);
+      rebuildAll();
     });
 
     /*** 辅助：CSV/HTML ***/
@@ -662,6 +718,59 @@
     const btnCancel = document.getElementById('btnCancel');
     const modalTitle = document.getElementById('modalTitle');
     const btnSubmit = document.getElementById('btnSubmit');
+    const modalConfirm = document.getElementById('modalConfirm');
+    const confirmTitleEl = document.getElementById('confirmTitle');
+    const confirmMessageEl = document.getElementById('confirmMessage');
+    const btnConfirmOk = document.getElementById('btnConfirmOk');
+    const btnConfirmCancel = document.getElementById('btnConfirmCancel');
+    const btnCloseConfirm = document.getElementById('btnCloseConfirm');
+
+    function openOverlay(el){
+      el.classList.add('active');
+      el.setAttribute('aria-hidden','false');
+      document.body.classList.add('modal-open');
+    }
+    function closeOverlay(el){
+      el.classList.remove('active');
+      el.setAttribute('aria-hidden','true');
+      if(!modalAdd.classList.contains('active') && !modalConfirm.classList.contains('active')){
+        document.body.classList.remove('modal-open');
+      }
+    }
+
+    let confirmResolver = null;
+
+    function settleConfirm(result){
+      if(!modalConfirm.classList.contains('active') && confirmResolver===null) return;
+      closeOverlay(modalConfirm);
+      if(confirmResolver){
+        const resolve = confirmResolver;
+        confirmResolver = null;
+        resolve(result);
+      }
+    }
+
+    function showConfirm(message, {title='确认操作', confirmText='确定', cancelText='取消', confirmVariant='primary'} = {}){
+      if(modalConfirm.classList.contains('active')){
+        settleConfirm(false);
+      }
+      confirmTitleEl.textContent = title;
+      confirmMessageEl.textContent = message;
+      btnConfirmOk.textContent = confirmText;
+      btnConfirmCancel.textContent = cancelText;
+      btnConfirmOk.classList.remove('primary','danger');
+      btnConfirmOk.classList.add(confirmVariant === 'danger' ? 'danger' : 'primary');
+      openOverlay(modalConfirm);
+      setTimeout(()=>{ btnConfirmOk?.focus(); }, 0);
+      return new Promise((resolve)=>{
+        confirmResolver = resolve;
+      });
+    }
+
+    btnConfirmOk?.addEventListener('click', ()=> settleConfirm(true));
+    btnConfirmCancel?.addEventListener('click', ()=> settleConfirm(false));
+    btnCloseConfirm?.addEventListener('click', ()=> settleConfirm(false));
+    modalConfirm?.addEventListener('click', (e)=>{ if(e.target === modalConfirm) settleConfirm(false); });
 
     let editingId = null;
 
@@ -671,7 +780,7 @@
       btnSubmit.textContent = '添加事件';
       btnSubmit.dataset.mode = 'add';
       form.reset();
-      modalAdd.style.display = 'flex';
+      openOverlay(modalAdd);
       initNow();
       typeInput.value = TYPES[0];
       notesInput.value = '';
@@ -682,7 +791,7 @@
       modalTitle.textContent = '编辑事件';
       btnSubmit.textContent = '保存修改';
       btnSubmit.dataset.mode = 'edit';
-      modalAdd.style.display = 'flex';
+      openOverlay(modalAdd);
       const dt = new Date(ev.datetime);
       dateInput.value = fmtDate(dt);
       timeInput.value = fmtTime(dt);
@@ -692,7 +801,7 @@
       setTimeout(()=>{ try{ document.getElementById('title').focus(); }catch{} }, 0);
     }
     function closeModal(){
-      modalAdd.style.display = 'none';
+      closeOverlay(modalAdd);
       editingId = null;
       btnSubmit.dataset.mode = 'add';
       form.reset();
@@ -704,7 +813,12 @@
     btnCloseModal?.addEventListener('click', closeModal);
     btnCancel?.addEventListener('click', closeModal);
     modalAdd.addEventListener('click', (e)=>{ if(e.target === modalAdd) closeModal(); });
-    window.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeModal(); });
+    window.addEventListener('keydown', (e)=>{
+      if(e.key==='Escape'){
+        if(modalConfirm.classList.contains('active')) settleConfirm(false);
+        else if(modalAdd.classList.contains('active')) closeModal();
+      }
+    });
 
     // 初始化
     initNow();
