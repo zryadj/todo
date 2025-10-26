@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>时间轴事件记录</title>
+  <title>时间轴记录</title>
   <style>
     :root{
       --bg: #0b1020;
@@ -144,11 +144,11 @@
   <div class="app">
     <header class="card">
       <div class="titlebar">
-        <h1>⏱️ 时间轴事件记录</h1>
+        <h1>⏱️ 时间轴记录</h1>
         <div class="actions">
           <button class="btn" id="btnToday" title="快速回到今天">回到今天</button>
           <button class="btn" id="btnExport" title="导出数据">导出</button>
-          <input type="file" id="fileImport" accept=".csv,text/csv" hidden>
+          <input type="file" id="fileImport" accept=".xls,application/vnd.ms-excel,text/html" hidden>
           <button class="btn" id="btnImport" title="导入数据（将覆盖当前缓存）">导入</button>
           <button class="btn danger" id="btnClear" title="清空所有本地数据">清空数据</button>
           <button class="btn primary" id="btnAdd" title="添加事件">添加事件</button>
@@ -182,7 +182,7 @@
   <div class="modal" id="modalAdd" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; backdrop-filter: blur(2px); background: rgba(0,0,0,0.45); z-index:1000;">
     <div class="card" style="width:min(920px, 92vw); padding:16px; border-radius: var(--radius-xl); box-shadow: var(--shadow);" role="dialog" aria-modal="true">
       <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px">
-        <strong>添加事件</strong>
+        <strong id="modalTitle">添加事件</strong>
         <button class="btn" id="btnCloseModal" aria-label="关闭" style="padding:6px 10px">关闭</button>
       </div>
       <form id="eventForm" class="form">
@@ -214,10 +214,10 @@
         </div>
         <div style="grid-column: span 8; display:flex; justify-content:flex-end; gap:10px">
           <button type="button" class="btn" id="btnCancel">取消</button>
-          <button class="btn primary" type="submit">添加事件</button>
+          <button class="btn primary" id="btnSubmit" type="submit">添加事件</button>
         </div>
       </form>
-      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 CSV 时会覆盖当前缓存；CSV 可由 Excel 另存为“逗号分隔值 (*.csv)”获得。</div>
+      <div class="help" style="margin-top:8px">数据仅保存在本地浏览器缓存。导入 XLS 时会覆盖当前缓存；导出的 XLS 可直接用 Excel 打开与编辑。</div>
     </div>
   </div>
 
@@ -432,22 +432,34 @@
         const t = timeInput.value;
         const dt = new Date(d + 'T' + t + ':00');
         if(isNaN(dt)) throw new Error('时间无效');
-        const ev = {
-          id: uid(),
+        const payload = {
           datetime: dt,
           type: typeInput.value,
           title: titleInput.value.trim(),
           notes: notesInput.value.trim()
         };
-        if(!ev.title) { alert('请填写事件标题'); return; }
-        allEvents.push(ev);
+        if(!payload.title) { alert('请填写事件标题'); return; }
+        if(editingId){
+          const idx = allEvents.findIndex(x=>x.id===editingId);
+          if(idx===-1) throw new Error('要编辑的事件不存在');
+          allEvents[idx] = {...allEvents[idx], ...payload};
+        }else{
+          allEvents.push({
+            id: uid(),
+            ...payload
+          });
+        }
         allEvents.sort((a,b)=> b.datetime - a.datetime);
         saveEvents(allEvents);
         // 更聪明的增量：重建即可（简单稳妥）
         rebuildAll();
-        // 清空标题与备注
-        titleInput.value='';
-        notesInput.value='';
+        if(!editingId){
+          // 清空标题与备注
+          titleInput.value='';
+          notesInput.value='';
+        }
+        closeModal();
+        editingId = null;
       }catch(err){
         alert('添加失败：'+err.message)
       }
@@ -469,44 +481,41 @@
       } else if(act==='edit'){
         const ev = allEvents.find(x=>x.id===id);
         if(!ev) return;
-        const newTitle = prompt('编辑标题：', ev.title);
-        if(newTitle===null) return;
-        const newNotes = prompt('编辑备注：', ev.notes||'');
-        ev.title = newTitle.trim();
-        ev.notes = (newNotes||'').trim();
-        saveEvents(allEvents);
-        rebuildAll();
+        openEditModal(ev);
       }
     });
 
-    // 导出 CSV（Excel 兼容）
+    // 导出 XLS（Excel 兼容）
     document.getElementById('btnExport').addEventListener('click', ()=>{
       if(allEvents.length===0){ alert('暂无数据可导出'); return; }
-      const header = '日期,时间,类型,标题,备注\n';
       const rows = allEvents
         .slice()
-        .sort((a,b)=> a.datetime - b.datetime) // 导出按时间正序
+        .sort((a,b)=> a.datetime - b.datetime)
         .map(e=>{
           const dt = new Date(e.datetime);
-          return [
-            fmtDate(dt),
-            fmtTime(dt),
-            e.type,
-            csvEscape(e.title),
-            csvEscape(e.notes||'')
-          ].join(',');
+          return `<tr>`+
+            `<td>${escapeHtml(fmtDate(dt))}</td>`+
+            `<td>${escapeHtml(fmtTime(dt))}</td>`+
+            `<td>${escapeHtml(e.type)}</td>`+
+            `<td>${escapeHtml(e.title)}</td>`+
+            `<td>${escapeHtml(e.notes||'')}</td>`+
+          `</tr>`;
         })
-        .join('\n');
-      const csv = '\ufeff' + header + rows; // BOM for Excel UTF-8
-      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+        .join('');
+      const table = `<!DOCTYPE html><html><head><meta charset="utf-8" />`+
+        `<style>table{border-collapse:collapse;}td,th{border:1px solid #999;padding:4px 6px;white-space:pre-wrap;}</style>`+
+        `</head><body><table><thead><tr>`+
+        `<th>日期</th><th>时间</th><th>类型</th><th>标题</th><th>备注</th>`+
+        `</tr></thead><tbody>${rows}</tbody></table></body></html>`;
+      const blob = new Blob([table], {type: 'application/vnd.ms-excel;charset=utf-8;'});
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = 'timeline.csv';
+      a.href = url; a.download = 'timeline.xls';
       document.body.appendChild(a); a.click(); a.remove();
       URL.revokeObjectURL(url);
     });
 
-    // 导入 CSV（覆盖缓存）
+    // 导入 XLS/CSV（覆盖缓存）
     document.getElementById('btnImport').addEventListener('click', ()=>{
       document.getElementById('fileImport').click();
     });
@@ -517,52 +526,7 @@
       reader.onload = ()=>{
         try{
           const text = String(reader.result);
-          const lines = text.split(/\r?\n/).filter(Boolean);
-          if(lines.length<=1) throw new Error('文件为空');
-          const headerCells = smartCsvSplit(lines[0]).map(c=>stripBom(c).trim());
-          const lowerHeader = headerCells.map(c=>c.toLowerCase());
-          const isZh = headerCells.length >= 5 && headerCells[0] === '日期' && headerCells[1] === '时间' && headerCells[2] === '类型';
-          const isEn = lowerHeader.length >= 4 && lowerHeader[0] === 'datetime' && lowerHeader[1] === 'type';
-          if(!isZh && !isEn){
-            throw new Error('列头需包含 日期,时间,类型,标题,备注');
-          }
-          const imported = [];
-          for(let i=1;i<lines.length;i++){
-            const cols = smartCsvSplit(lines[i]);
-            let item = null;
-            if(isZh){
-              const datePart = cols[0] ?? '';
-              const timePart = cols[1] ?? '';
-              const typePart = stripBom(cols[2] ?? '').trim();
-              const titlePart = cols[3] ?? '';
-              const notesPart = cols[4] ?? '';
-              const d = parseDateTimeParts(datePart, timePart);
-              if(!d) continue;
-              if(!TYPES.includes(typePart)) continue;
-              item = {
-                id: uid(),
-                datetime: d,
-                type: typePart,
-                title: stripBom(titlePart).trim(),
-                notes: stripBom(notesPart).trim()
-              };
-            }else{
-              const [dt, type, title, notes] = cols;
-              const d = new Date(stripBom(dt));
-              if(isNaN(d)) continue;
-              const typePart = stripBom(type).trim();
-              if(!TYPES.includes(typePart)) continue;
-              item = {
-                id: uid(),
-                datetime: d,
-                type: typePart,
-                title: stripBom(title||'').trim(),
-                notes: stripBom(notes||'').trim()
-              };
-            }
-            if(!item.title) continue;
-            imported.push(item);
-          }
+          const imported = parseImportedData(text);
           if(imported.length===0) throw new Error('没有有效数据行');
           if(!confirm(`将导入 ${imported.length} 条记录，并覆盖当前缓存。继续？`)) return;
           allEvents = imported.sort((a,b)=> b.datetime - a.datetime);
@@ -587,10 +551,87 @@
     });
 
     /*** 辅助：CSV/HTML ***/
-    function csvEscape(s){
-      const t = String(s).replaceAll('"','""');
-      if(t.includes(',') || t.includes('\n') || t.includes('"')) return '"'+t+'"';
-      return t;
+    function parseImportedData(rawText=''){
+      const text = stripBom(rawText).trim();
+      if(!text) throw new Error('文件为空');
+      if(text.startsWith('<')){
+        return parseHtmlTable(text);
+      }
+      return parseCsv(text);
+    }
+    function parseHtmlTable(html){
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const table = doc.querySelector('table');
+      if(!table) throw new Error('未找到表格数据');
+      const rows = Array.from(table.querySelectorAll('tr'));
+      if(rows.length<=1) throw new Error('没有有效数据行');
+      const headerCells = Array.from(rows[0].cells).map(td=>td.textContent.trim());
+      const lowerHeader = headerCells.map(c=>c.toLowerCase());
+      const isZh = headerCells.length >= 5 && headerCells[0] === '日期' && headerCells[1] === '时间' && headerCells[2] === '类型';
+      const isEn = lowerHeader.length >= 4 && lowerHeader[0] === 'datetime' && lowerHeader[1] === 'type';
+      if(!isZh && !isEn) throw new Error('列头需包含 日期,时间,类型,标题,备注');
+      const imported = [];
+      for(let i=1;i<rows.length;i++){
+        const cells = Array.from(rows[i].cells).map(td=>td.textContent ?? '');
+        if(cells.every(v=>!v.trim())) continue;
+        const item = buildItemFromCells(cells, isZh);
+        if(item) imported.push(item);
+      }
+      return imported;
+    }
+    function parseCsv(text){
+      const lines = text.split(/\r?\n/).filter(line=>line.trim().length>0);
+      if(lines.length<=1) throw new Error('文件为空');
+      const headerCells = smartCsvSplit(lines[0]).map(c=>stripBom(c).trim());
+      const lowerHeader = headerCells.map(c=>c.toLowerCase());
+      const isZh = headerCells.length >= 5 && headerCells[0] === '日期' && headerCells[1] === '时间' && headerCells[2] === '类型';
+      const isEn = lowerHeader.length >= 4 && lowerHeader[0] === 'datetime' && lowerHeader[1] === 'type';
+      if(!isZh && !isEn){
+        throw new Error('列头需包含 日期,时间,类型,标题,备注');
+      }
+      const imported = [];
+      for(let i=1;i<lines.length;i++){
+        const cols = smartCsvSplit(lines[i]);
+        const item = buildItemFromCells(cols, isZh);
+        if(item) imported.push(item);
+      }
+      return imported;
+    }
+    function buildItemFromCells(cols, isZh){
+      let item = null;
+      if(isZh){
+        const datePart = cols[0] ?? '';
+        const timePart = cols[1] ?? '';
+        const typePart = stripBom(cols[2] ?? '').trim();
+        const titlePart = cols[3] ?? '';
+        const notesPart = cols[4] ?? '';
+        const d = parseDateTimeParts(datePart, timePart);
+        if(!d) return null;
+        if(!TYPES.includes(typePart)) return null;
+        item = {
+          id: uid(),
+          datetime: d,
+          type: typePart,
+          title: stripBom(titlePart).trim(),
+          notes: stripBom(notesPart).trim()
+        };
+      }else{
+        const [dt, type, title, notes] = cols;
+        const d = new Date(stripBom(dt));
+        if(isNaN(d)) return null;
+        const typePart = stripBom(type||'').trim();
+        if(!TYPES.includes(typePart)) return null;
+        item = {
+          id: uid(),
+          datetime: d,
+          type: typePart,
+          title: stripBom(title||'').trim(),
+          notes: stripBom(notes||'').trim()
+        };
+      }
+      if(!item.title) return null;
+      return item;
     }
     function smartCsvSplit(line){
       // 解析带引号的 CSV 行
@@ -619,15 +660,47 @@
     const btnAdd = document.getElementById('btnAdd');
     const btnCloseModal = document.getElementById('btnCloseModal');
     const btnCancel = document.getElementById('btnCancel');
+    const modalTitle = document.getElementById('modalTitle');
+    const btnSubmit = document.getElementById('btnSubmit');
 
-    function openModal(){
+    let editingId = null;
+
+    function openAddModal(){
+      editingId = null;
+      modalTitle.textContent = '添加事件';
+      btnSubmit.textContent = '添加事件';
+      btnSubmit.dataset.mode = 'add';
+      form.reset();
       modalAdd.style.display = 'flex';
       initNow();
+      typeInput.value = TYPES[0];
+      notesInput.value = '';
       setTimeout(()=>{ try{ document.getElementById('title').focus(); }catch{} }, 0);
     }
-    function closeModal(){ modalAdd.style.display = 'none'; }
+    function openEditModal(ev){
+      editingId = ev.id;
+      modalTitle.textContent = '编辑事件';
+      btnSubmit.textContent = '保存修改';
+      btnSubmit.dataset.mode = 'edit';
+      modalAdd.style.display = 'flex';
+      const dt = new Date(ev.datetime);
+      dateInput.value = fmtDate(dt);
+      timeInput.value = fmtTime(dt);
+      typeInput.value = ev.type;
+      titleInput.value = ev.title;
+      notesInput.value = ev.notes || '';
+      setTimeout(()=>{ try{ document.getElementById('title').focus(); }catch{} }, 0);
+    }
+    function closeModal(){
+      modalAdd.style.display = 'none';
+      editingId = null;
+      btnSubmit.dataset.mode = 'add';
+      form.reset();
+      typeInput.value = TYPES[0];
+      notesInput.value = '';
+    }
 
-    btnAdd?.addEventListener('click', openModal);
+    btnAdd?.addEventListener('click', openAddModal);
     btnCloseModal?.addEventListener('click', closeModal);
     btnCancel?.addEventListener('click', closeModal);
     modalAdd.addEventListener('click', (e)=>{ if(e.target === modalAdd) closeModal(); });
